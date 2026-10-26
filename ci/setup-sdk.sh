@@ -16,7 +16,18 @@ mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
 
 A="$SDK_ROOT/cmdline-tools/latest/bin/android --sdk=$SDK_ROOT --no-metrics"
 $A sdk install "platform-tools" "build-tools;36.0.0"
-$A sdk install --canary "platforms;android-37"
+echo "--- canary catalog (platforms) ---"
+$A sdk list --canary 2>&1 | grep -i "platform" | head -n 40 || true
+for spec in "platforms;android-37" "platforms;android-37.0" "platforms/android-37"; do
+  echo "--- trying canary: $spec ---"
+  $A sdk install --canary "$spec" 2>&1 | tail -n 3 || true
+done
+for spec in "platforms;android-37" "platforms;android-37.0"; do
+  echo "--- trying beta: $spec ---"
+  $A sdk install --beta "$spec" 2>&1 | tail -n 3 || true
+done
+echo "--- platforms on disk ---"
+ls "$SDK_ROOT/platforms" || true
 
 # NB: `yes` dies with SIGPIPE once sdkmanager exits; with pipefail that would
 # fail the step, so the pipeline's status is ignored (a real license problem
