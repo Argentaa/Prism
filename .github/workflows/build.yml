@@ -27,10 +27,10 @@ jobs:
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
 
-      - name: Build debug APK + run unit tests
+      - name: Build debug APK
         run: |
           chmod +x gradlew
-          ./gradlew :app:assembleDebug :app:testDebugUnitTest --stacktrace
+          ./gradlew :app:assembleDebug --stacktrace
 
       - name: Upload debug APK
         # Always: the APK is the deliverable for on-phone testing, even when
@@ -42,3 +42,6 @@ jobs:
           name: Prism-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      - name: Run unit tests
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
