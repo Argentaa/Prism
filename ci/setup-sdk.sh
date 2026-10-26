@@ -14,9 +14,7 @@ unzip -q /tmp/cmdtools.zip -d "$SDK_ROOT/cmdline-tools"
 mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
 
 BIN="$SDK_ROOT/cmdline-tools/latest/bin"
-echo "--- android sdk help (probe) ---"
-"$BIN/android" sdk --help 2>&1 | head -n 60 || true
-echo "--- android-37 in catalog? ---"
-"$BIN/android" --sdk="$SDK_ROOT" sdk list 2>&1 | grep -i "android-37" | head -n 10 || true
-echo "--- installing packages ---"
-yes | "$BIN/android" --sdk="$SDK_ROOT" sdk install "platform-tools" "platforms;android-37" "build-tools;36.0.0" 2>&1 | tail -n 15
+echo "--- full sdk list ---"
+"$BIN/android" --sdk="$SDK_ROOT" sdk list 2>&1 | head -n 120 || true
+echo "--- install help ---"
+"$BIN/android" sdk install --help 2>&1 | head -n 40 || true
