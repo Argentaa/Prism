@@ -14,4 +14,6 @@ mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
 # fail the step, so the pipeline's status is ignored (license problems surface
 # loudly at the install below instead).
 yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+echo "--- available android platforms (probe) ---"
+"$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --list 2>/dev/null | grep -i "platforms;android" | head -n 30 || true
 "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-37" "build-tools;36.0.0"
