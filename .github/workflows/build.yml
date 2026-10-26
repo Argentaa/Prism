@@ -33,7 +33,12 @@ jobs:
           ./gradlew :app:assembleDebug :app:testDebugUnitTest --stacktrace
 
       - name: Upload debug APK
+        # Always: the APK is the deliverable for on-phone testing, even when
+        # flaky live-network tests fail (YouTube bot-blocks datacenter IPs;
+        # see CONTRIBUTING.md). The job status still reflects the tests.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Prism-debug
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
