@@ -405,6 +405,8 @@ class AppContainer(val app: Application) {
     /** Sing: karaoke with the song's own backing (vocals separated on the phone). */
     val sing by lazy { com.prism.music.playback.sing.Sing(this) }
     val dj = com.prism.music.playback.DjMode()
+    /** The automatic transition's public state for the Queue's transition card (see the blend). */
+    val mixPreview = com.prism.music.playback.MixPreview()
     val exclusions by lazy { com.prism.music.data.foryou.Exclusions(app) }
     val forYou by lazy { com.prism.music.data.foryou.ForYou(this) }
     val releaseRadar by lazy { com.prism.music.data.foryou.ReleaseRadar(this) }

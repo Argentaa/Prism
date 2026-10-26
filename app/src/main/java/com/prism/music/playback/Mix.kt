@@ -61,6 +61,8 @@ class MixEngine(
     private val buildTail: (ShiftProcessor) -> ExoPlayer,
     /** A blend is over (done or stopped) and the main player is back to normal: the listener's own speed can return. */
     private val onSettled: () -> Unit = {},
+    /** Publishes the planned transition and no-blend reasons for the Queue's transition card (null in unit tests). */
+    private val transitions: MixPreview? = null,
 ) {
     private class Plan(
         val fromId: String,
@@ -76,9 +78,13 @@ class MixEngine(
         val beats: Boolean,
         /** A beat of the ending song in the next song's time (ms), with beat matching. */
         val beatMs: Double = 0.0,
+        /** Short human reason for the Queue's transition card, e.g. "harmonic keys · beats locked". */
+        val reason: String,
     ) {
         /** How many times the blend has been put off to get the tail in step. */
         var postponed = 0
+
+        fun toPreview() = TransitionPreview(fromId, toId, startMs, lengthMs, inMs, ratio, beats, reason)
     }
 
     private enum class Phase { IDLE, PREPARED, SYNCING, BLENDING, SETTLING }
@@ -200,6 +206,7 @@ class MixEngine(
         tail = t
         plan = p
         phase = Phase.PREPARED
+        transitions?.publish(p.toPreview())
         note("planned ${p.fromId} -> ${p.toId}: blend at ${p.startMs} ms for ${p.lengthMs} ms, next from ${p.inMs} ms" +
             if (p.beats) ", tempo ×%.3f, on the beat".format(p.ratio) else "")
         return 50
@@ -217,6 +224,7 @@ class MixEngine(
     /** Why a song isn't blended into the next, said once per song (in Share diagnostics), then null. */
     private fun noBlend(item: MediaItem, why: String): Plan? {
         note("no blend after ${item.mediaId}: $why")
+        transitions?.noBlend(why)
         return null
     }
 
@@ -230,10 +238,11 @@ class MixEngine(
         val b = tempo.cached(next.mediaId)
         val nextDur = (next.mediaMetadata.durationMs ?: 0L).takeIf { it > 0 } ?: Long.MAX_VALUE
         var chosen = if (auto()) autoLengthMs(a, b) else length
+        var reason = if (auto()) autoReason(a, b) else "fixed ${length / 1000}s"
         harmonic(item.mediaId, next.mediaId)?.let { clash ->
             chosen = when {
-                clash <= 0.25 -> maxOf(chosen, HARMONIC_LONG_MS)
-                clash >= 1.0 -> minOf(chosen, HARMONIC_SHORT_MS)
+                clash <= 0.25 -> maxOf(chosen, HARMONIC_LONG_MS).also { reason = "harmonic keys" }
+                clash >= 1.0 -> minOf(chosen, HARMONIC_SHORT_MS).also { reason = "clashing keys" }
                 else -> chosen
             }
         }
@@ -259,10 +268,11 @@ class MixEngine(
                 ratio = r.toFloat()
                 beats = true
                 beatMs = beat * r
+                reason += " · beats locked"
             }
         }
         if (start < dur / 2) return noBlend(item, "the blend would start before the song's middle")
-        return Plan(item.mediaId, next.mediaId, toIndex, start, inMs, len, ratio, beats, beatMs)
+        return Plan(item.mediaId, next.mediaId, toIndex, start, inMs, len, ratio, beats, beatMs, reason)
     }
 
     /** The tail is getting ready; it starts playing along (muted) just before the blend. */
@@ -517,6 +527,7 @@ class MixEngine(
         phase = Phase.IDLE
         plan = null
         noPlanFor = null
+        transitions?.clear()
         onSettled()
     }
 
@@ -531,6 +542,7 @@ class MixEngine(
     private fun abort(why: String): Long {
         val wasOn = phase != Phase.IDLE
         if (wasOn) note("blend stopped: $why")
+        transitions?.clear()
         tail?.let { runCatching { it.release() } }
         tail = null
         shifter = null
@@ -560,6 +572,20 @@ class MixEngine(
                 intro >= AUTO_SHORT_MS -> minOf(intro, AUTO_INTRO_MAX_MS)
                 else -> AUTO_SHORT_MS
             }.coerceIn(AUTO_SHORT_MS, AUTO_MAX_MS)
+        }
+
+        /**
+         * The human reason behind [autoLengthMs]'s branch, for the Queue's transition card.
+         * Kept beside it so the two can't drift apart unnoticed.
+         */
+        fun autoReason(ending: Tempo?, next: Tempo?): String {
+            val fade = ending?.fadeOutMs?.takeIf { it >= 0 } ?: return "not scanned yet"
+            val intro = next?.quietIntroMs?.takeIf { it >= 0 } ?: 0L
+            return when {
+                fade >= AUTO_SHORT_MS -> "over the fade-out"
+                intro >= AUTO_SHORT_MS -> "over the quiet intro"
+                else -> "short touch"
+            }
         }
 
         /**

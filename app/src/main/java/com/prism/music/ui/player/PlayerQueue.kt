@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -49,6 +50,7 @@ import com.prism.music.data.model.Song
 import com.prism.music.data.model.hiRes
 import com.prism.music.playback.QueueEntry
 import com.prism.music.ui.theme.LocalContainer
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -87,11 +89,16 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
     val dj by c.dj.on.collectAsState()
     val djProgress by c.dj.progress.collectAsState()
     val djRevision by c.dj.revision.collectAsState()
+    // The automatic transition's plan (or why the current song isn't blended), for the transition card.
+    val transition by c.mixPreview.preview.collectAsState()
+    val noBlendReason by c.mixPreview.noBlendReason.collectAsState()
     // Smart Shuffle's picks are marked ✦.
     val smartPicks by c.queue.smartPicks.collectAsState()
-    val badge: (Song) -> String? = remember(dj, djRevision, smartPicks) {
+    val badge: (Song) -> String? = remember(dj, djRevision, smartPicks, transition) {
         { song ->
+            val t = transition
             when {
+                t != null && t.toId == song.id -> "→ ${t.lengthMs / 1000}s" + if (t.beats) " · beats" else ""
                 dj -> if (!c.mixTempo.keyed(song.id)) "…" else djBadge(c.mixTempo.key(song.id), c.mixTempo.djBpm(song.id))
                 song.id in smartPicks -> "✦ Pick"
                 else -> null
@@ -166,6 +173,9 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
                 item(key = "h-now") { Heading("Now Playing", Modifier.padding(top = 12.dp, bottom = 6.dp)) }
                 item(key = "now-" + now.uid) { QueueRow(now.song, isCurrent = true, onClick = {}, onRemove = null, badge = badge(now.song)) }
             }
+            if (settings.mix && (transition != null || noBlendReason != null)) {
+                item(key = "transition") { TransitionCard() }
+            }
             if (queued.isNotEmpty()) {
                 item(key = "h-queued") { Heading("Next in queue", Modifier.padding(top = 16.dp, bottom = 6.dp)) }
                 queueSection(queued, reorder = !shuffled, badge = badge) { from, to -> pc.move(from, to) }
@@ -212,6 +222,51 @@ private fun LazyListScope.queueSection(rows: List<QueueEntry>, reorder: Boolean 
                 }
             },
         )
+    }
+}
+
+/**
+ * The automatic transition's card: what the next blend looks like (length, reason, countdown),
+ * or why the current song isn't blended. Read-only: it steers nothing.
+ */
+@Composable
+private fun TransitionCard() {
+    val c = LocalContainer.current
+    val pc = c.player
+    val transition by c.mixPreview.preview.collectAsState()
+    val noBlendReason by c.mixPreview.noBlendReason.collectAsState()
+    var pos by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(transition?.fromId, transition?.toId) {
+        if (transition == null) return@LaunchedEffect
+        while (true) {
+            pos = pc.position
+            delay(500)
+        }
+    }
+    Column(
+        Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.08f)).padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        val t = transition
+        if (t != null) {
+            val left = (t.startMs - pos) / 1000
+            Text(
+                if (left > 0) "Next blend · mix in ${left}s" else "Blending now",
+                style = MaterialTheme.typography.titleMedium, color = Color.White,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "${t.lengthMs / 1000}s · ${t.reason}",
+                style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.6f),
+            )
+        } else {
+            Text("No blend", style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                noBlendReason ?: "", style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.6f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

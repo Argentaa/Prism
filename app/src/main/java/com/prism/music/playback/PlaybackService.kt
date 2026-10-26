@@ -320,6 +320,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             scanFromPhone = { id -> scope.launch { c.mixTempo.measure(id, network = false) } },
             buildTail = ::buildTailPlayer,
             onSettled = ::restoreMusicSpeed,
+            transitions = c.mixPreview,
         ).also { it.start() }
         // Prism Connect: the speaker or TV being cast to plays what this player plays, and its volume is the session's.
         sessionPlayer.remote = object : LyricsOverlayPlayer.Remote {
