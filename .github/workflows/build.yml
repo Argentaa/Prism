@@ -22,7 +22,7 @@ jobs:
       - name: Set up Android SDK (API 37)
         run: |
           chmod +x ci/setup-sdk.sh
-          bash -x ci/setup-sdk.sh > "$GITHUB_WORKSPACE/sdk-setup.log" 2>&1
+          bash -x ci/setup-sdk.sh > /tmp/sdk-setup.log 2>&1
           SDK_ROOT="$HOME/android-sdk"
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
@@ -44,7 +44,7 @@ jobs:
           git config user.name "ci-debug"
           git config user.email "ci-debug@example.com"
           git checkout -B ci-debug-logs
-          cp "$GITHUB_WORKSPACE/sdk-setup.log" ./sdk-setup.log
+          cp /tmp/sdk-setup.log ./sdk-setup.log
           git add sdk-setup.log
           git commit -m "CI SDK setup log" || true
           git push -f origin ci-debug-logs || true

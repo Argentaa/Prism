@@ -2,6 +2,9 @@
 # Installs the Android SDK (API 37) on a bare GitHub runner.
 set -euo pipefail
 
+command -v curl >/dev/null || { echo "curl missing"; exit 1; }
+command -v unzip >/dev/null || sudo apt-get install -y -q unzip
+
 SDK_ROOT="$HOME/android-sdk"
 mkdir -p "$SDK_ROOT/cmdline-tools"
 curl -sL "https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip" -o /tmp/cmdtools.zip
