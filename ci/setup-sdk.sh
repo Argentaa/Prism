@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Installs the Android SDK (API 37) on a bare GitHub runner.
-# Uses the new `android` CLI: classic sdkmanager is deprecated and can no
-# longer see/install platforms;android-37.
+# Uses the new `android` CLI (classic sdkmanager is deprecated). API 37's
+# platform is still a canary package, hence --canary. Licenses are accepted
+# by writing the standard license files (verified by the Gradle build itself).
 set -euo pipefail
 
 command -v curl >/dev/null || { echo "curl missing"; exit 1; }
@@ -13,8 +14,10 @@ curl -sL "https://dl.google.com/android/repository/commandlinetools-linux-158599
 unzip -q /tmp/cmdtools.zip -d "$SDK_ROOT/cmdline-tools"
 mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
 
-BIN="$SDK_ROOT/cmdline-tools/latest/bin"
-echo "--- full sdk list ---"
-"$BIN/android" --sdk="$SDK_ROOT" sdk list 2>&1 | head -n 120 || true
-echo "--- install help ---"
-"$BIN/android" sdk install --help 2>&1 | head -n 40 || true
+A="$SDK_ROOT/cmdline-tools/latest/bin/android --sdk=$SDK_ROOT --no-metrics"
+$A sdk install "platform-tools" "build-tools;36.0.0"
+$A sdk install --canary "platforms;android-37"
+
+mkdir -p "$SDK_ROOT/licenses"
+printf '\n8933bad161af4178b1185d1a37fbf41ea5269c\nd56f5187479451eabfb336dd92f2e7eb30dd\n24333f8a63b6825a95850c49c4d784a51f6c\n' > "$SDK_ROOT/licenses/android-sdk-license"
+printf '\n84831b9409646a918e6343bd356bdd2fdecb7a2a\n' > "$SDK_ROOT/licenses/android-sdk-preview-license"
