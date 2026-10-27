@@ -44,7 +44,7 @@ class TransitionFilterAudioProcessor : BaseAudioProcessor() {
     }
 
     /** Back to untouched; any thread. */
-    fun reset() {
+    fun clear() {
         wanted = Job(Job.Kind.NONE, 0)
     }
 

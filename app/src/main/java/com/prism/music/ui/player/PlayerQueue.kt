@@ -371,8 +371,8 @@ private fun TransitionCard() {
             }
         }
     }
-    if (showGrid && t != null) {
-        val target = t.toId
+    if (showGrid && transition?.toId != null) {
+        val target = transition!!.toId
         val periodMs = (60_000.0 / ((c.mixTempo.djBpm(target) ?: 120.0).coerceAtLeast(30.0))).roundToInt().toLong()
         fun nudge(by: Long) {
             val v = (gridMs + by).coerceIn(-2000L, 2000L)

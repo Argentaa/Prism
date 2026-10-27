@@ -371,7 +371,7 @@ class MixEngine(
                 // The blend starts on a phrase of the ending song (16 beats from its outro grid: a verse/chorus
                 // boundary), not just any beat, with the next song's first beat.
                 val beat = a.periodMs
-                val aOutro = griddedOutroBeat(a.outroBeatMs, gridA, beat)
+                val aOutro = griddedOutroBeat(a.outroBeatMs.toDouble(), gridA, beat)
                 val k = floor((start - aOutro) / beat).toLong().coerceAtLeast(16L)
                 val phraseK = (k / PHRASE_BEATS) * PHRASE_BEATS
                 start = (aOutro + phraseK * beat).toLong()
@@ -608,8 +608,8 @@ class MixEngine(
 
     /** Filters back to untouched (a plan captured its style; later picks must not leak in). */
     private fun resetFilters() {
-        mainFilter?.reset()
-        tailFilter?.reset()
+        mainFilter?.clear()
+        tailFilter?.clear()
         tailFilter = null
     }
 

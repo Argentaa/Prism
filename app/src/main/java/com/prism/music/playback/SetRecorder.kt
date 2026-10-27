@@ -3,15 +3,15 @@ package com.prism.music.playback
 import android.content.ContentValues
 import android.content.Context
 import android.media.AudioFormat
-import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
 import android.net.Uri
 import android.os.Build
-import android.os.Process
 import android.provider.MediaStore
 import androidx.annotation.RequiresApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.io.File
+import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -98,15 +98,11 @@ class SetRecorder(private val app: Context) {
         try {
             runCatching { s.record.stop() }
             s.record.release()
-            if (s.dataBytes > 0) {
-                s.out.seek(0)
-                s.out.write(Engine.wavHeader(s.dataBytes))
-                s.out.close()
-                Engine(app).markPending(s.uri, false)
-                lastUri = s.uri
+            runCatching { s.out.close() }
+            if (s.dataBytes > 0 && patchAndPublish(s)) {
+                // lastUri set inside.
             } else {
-                runCatching { s.out.close() }
-                app.contentResolver.delete(s.uri, null, null)
+                runCatching { s.cache.delete() }
                 lastUri = null
             }
         } catch (e: Exception) {
@@ -114,21 +110,55 @@ class SetRecorder(private val app: Context) {
         }
     }
 
+    /** Patches the WAV header, moves the take into Music/Prism sets, and remembers it. */
+    private fun patchAndPublish(s: Engine.Session): Boolean {
+        return try {
+            RandomAccessFile(s.cache, "rw").use { it.seek(0); it.write(Engine.wavHeader(s.dataBytes)) }
+            val name = "Prism set " + SimpleDateFormat("yyyy-MM-dd HHmm", Locale.US).format(Date(_startedAtMs.value)) + ".wav"
+            val values = ContentValues().apply {
+                put(MediaStore.Audio.Media.DISPLAY_NAME, name)
+                put(MediaStore.Audio.Media.MIME_TYPE, "audio/x-wav")
+                put(MediaStore.Audio.Media.RELATIVE_PATH, "Music/Prism sets")
+                put(MediaStore.Audio.Media.IS_PENDING, 1)
+            }
+            val uri = app.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
+                ?: return false
+            try {
+                app.contentResolver.openOutputStream(uri)?.use { out ->
+                    s.cache.inputStream().use { it.copyTo(out) }
+                } ?: run {
+                    app.contentResolver.delete(uri, null, null)
+                    return false
+                }
+            } catch (e: Exception) {
+                runCatching { app.contentResolver.delete(uri, null, null) }
+                return false
+            }
+            Engine(app).markPending(uri, false)
+            runCatching { s.cache.delete() }
+            lastUri = uri
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     /** Everything that touches API 29-only classes, opened synchronously (fast: config + buffers). */
     private class Engine(private val app: Context) {
         class Session(
             val record: AudioRecord,
-            val out: RandomAccessFile,
-            val uri: Uri,
+            val out: FileOutputStream,
+            val cache: File,
             val framesPerRead: Int,
             var dataBytes: Long = 0,
         )
 
         @RequiresApi(29)
         fun open(): Session? {
-            val config = AudioPlaybackCaptureConfiguration.Builder(null)
-                .addMatchingUid(Process.myUid())
-                .build()
+            // Records to a cache take first (a MediaStore FD can't be seeked for the header patch).
+            val dir = File(app.cacheDir, "set-takes").also { it.mkdirs() }
+            val cache = File(dir, "take.wav")
+            val config = PlaybackCapture.ownUid()
             val format = AudioFormat.Builder()
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                 .setSampleRate(SAMPLE_RATE)
@@ -145,31 +175,20 @@ class SetRecorder(private val app: Context) {
                 record.release()
                 return null
             }
-            val name = "Prism set " + SimpleDateFormat("yyyy-MM-dd HHmm", Locale.US).format(Date()) + ".wav"
-            val values = ContentValues().apply {
-                put(MediaStore.Audio.Media.DISPLAY_NAME, name)
-                put(MediaStore.Audio.Media.MIME_TYPE, "audio/x-wav")
-                put(MediaStore.Audio.Media.RELATIVE_PATH, "Music/Prism sets")
-                put(MediaStore.Audio.Media.IS_PENDING, 1)
-            }
-            val uri = app.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
-                ?: run { record.release(); return null }
             val out = try {
-                val fd = app.contentResolver.openFileDescriptor(uri, "rw") ?: throw IllegalStateException("no fd")
-                RandomAccessFile(fd.fileDescriptor, "rw").also { it.write(ByteArray(44)) }
+                FileOutputStream(cache).also { it.write(ByteArray(44)) }
             } catch (e: Exception) {
                 record.release()
-                runCatching { app.contentResolver.delete(uri, null, null) }
                 return null
             }
             record.startRecording()
             if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                 runCatching { out.close() }
                 record.release()
-                runCatching { app.contentResolver.delete(uri, null, null) }
+                runCatching { cache.delete() }
                 return null
             }
-            return Session(record, out, uri, (minBuf * 2 / FRAME_BYTES).coerceAtLeast(512))
+            return Session(record, out, cache, (minBuf * 2 / FRAME_BYTES).coerceAtLeast(512))
         }
 
         fun markPending(uri: Uri, pending: Boolean) {
