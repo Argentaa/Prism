@@ -1,10 +1,18 @@
 package com.prism.music.playback
 
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ln
+import kotlin.math.sin
 
-/** How a DJ set's energy should go: level, rising to a peak, or settling down. */
-enum class DjFlow(val label: String) { STEADY("Steady"), BUILD("Build up"), WIND_DOWN("Wind down") }
+/** How a DJ set's energy should go: level, rising to a peak, settling down, a wave — or picked from the songs. */
+enum class DjFlow(val label: String) {
+    STEADY("Steady"),
+    BUILD("Build up"),
+    WIND_DOWN("Wind down"),
+    JOURNEY("Journey"),
+    AUTO("Auto"),
+}
 
 /** What DJ mode knows about a song: its key and tempo when they're clear, its loudness, and its artist. */
 data class DjTrack(val id: String, val key: MusicKey?, val bpm: Double?, val loudness: Float?, val artist: String?)
@@ -33,6 +41,8 @@ object DjSequencer {
      */
     fun order(start: DjTrack, tracks: List<DjTrack>, flow: DjFlow): List<DjTrack> {
         if (tracks.size < 2) return tracks
+        // Auto reads the room first: a calm start rises, an intense one settles, a mid one waves.
+        val f = if (flow == DjFlow.AUTO) resolveAuto(start, tracks) else flow
         val energy = energies(listOf(start) + tracks)
         val n = tracks.size
         // Greedy: each next song is the one that follows best from the last.
@@ -41,23 +51,43 @@ object DjSequencer {
         var prev = -1
         while (left.isNotEmpty()) {
             val pos = seq.size + 1
-            val pick = left.minBy { i -> step(trackOf(start, tracks, prev), tracks[i], energyOf(energy, prev), energy[i + 1], pos, n, flow) }
+            val pick = left.minBy { i -> step(trackOf(start, tracks, prev), tracks[i], energyOf(energy, prev), energy[i + 1], pos, n, f) }
             seq += pick; left.remove(pick); prev = pick
         }
         // 2-opt: reverse any stretch that lowers the whole set's cost, until none does (a few passes at most). Steps
         // count squared, so one clash costs more than a few small compromises: a set is judged by its worst blends.
-        var best = total(start, tracks, seq, energy, flow)
+        var best = total(start, tracks, seq, energy, f)
         repeat(6) {
             var improved = false
             for (i in 0 until n - 1) for (j in i + 1 until n) {
                 seq.subList(i, j + 1).reverse()
-                val c = total(start, tracks, seq, energy, flow)
+                val c = total(start, tracks, seq, energy, f)
                 if (c < best - 1e-9) { best = c; improved = true } else seq.subList(i, j + 1).reverse()
             }
             if (!improved) return seq.map { tracks[it] }
         }
         return seq.map { tracks[it] }
     }
+
+    /**
+     * Which flow fits these songs: the playing song's energy within the set (0 calmest … 1 most intense) decides.
+     * Calm start → rise; intense start → settle; mid start → a wave (the diversified set).
+     */
+    fun resolveAuto(start: DjTrack, tracks: List<DjTrack>): DjFlow {
+        if (tracks.size < 2) return DjFlow.STEADY
+        val e0 = energies(listOf(start) + tracks)[0]
+        return when {
+            e0 <= 0.35 -> DjFlow.BUILD
+            e0 >= 0.65 -> DjFlow.WIND_DOWN
+            else -> DjFlow.JOURNEY
+        }
+    }
+
+    /**
+     * The Journey's energy target through the set, 0 (first) to 1 (last): a wave that rises from the middle to a
+     * peak about two-thirds in, then settles a little — up, breathe, up again, ease off.
+     */
+    fun journeyTarget(p: Double) = sin(PI * (0.18 + 0.64 * p))
 
     private fun trackOf(start: DjTrack, tracks: List<DjTrack>, i: Int) = if (i < 0) start else tracks[i]
     private fun energyOf(energy: DoubleArray, i: Int) = energy[i + 1]
@@ -86,6 +116,8 @@ object DjSequencer {
             DjFlow.STEADY -> abs(eb - ea)
             DjFlow.BUILD -> abs(eb - p)
             DjFlow.WIND_DOWN -> abs(eb - (1 - p))
+            // Auto is resolved to a concrete flow in [order]; steering straight at it scores the wave.
+            DjFlow.JOURNEY, DjFlow.AUTO -> abs(eb - journeyTarget(p))
         }
         val artist = if (a.artist != null && a.artist.equals(b.artist, ignoreCase = true)) 1.0 else 0.0
         return W_KEY * key + W_TEMPO * tempo + W_ENERGY * energy + W_ARTIST * artist

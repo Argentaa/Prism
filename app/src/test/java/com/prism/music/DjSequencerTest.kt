@@ -102,4 +102,34 @@ class DjSequencerTest {
         println("cost: as given %.1f, as a set %.1f".format(given, ordered))
         assertTrue(ordered < given * 0.6)
     }
+
+    @Test
+    fun autoReadsTheRoom() {
+        val tracks = (0 until 8).map { t("e$it", 0, loud = -16f + it * 1.5f) }.shuffled(java.util.Random(4))
+        // A calm start rises like Build up; an intense one settles like Wind down.
+        val calm = t("start", 0, loud = -20f)
+        assertEquals(DjFlow.BUILD, DjSequencer.resolveAuto(calm, tracks))
+        assertEquals(
+            DjSequencer.order(calm, tracks, DjFlow.BUILD).map { it.id },
+            DjSequencer.order(calm, tracks, DjFlow.AUTO).map { it.id },
+        )
+        val intense = t("start", 0, loud = -2f)
+        assertEquals(DjFlow.WIND_DOWN, DjSequencer.resolveAuto(intense, tracks))
+        assertEquals(
+            DjSequencer.order(intense, tracks, DjFlow.WIND_DOWN).map { it.id },
+            DjSequencer.order(intense, tracks, DjFlow.AUTO).map { it.id },
+        )
+    }
+
+    @Test
+    fun journeyWaves() {
+        // A mid start waves instead of climbing straight: the peak lands mid-set, not at an end.
+        val tracks = (0 until 8).map { t("e$it", 0, loud = -16f + it * 1.5f) }.shuffled(java.util.Random(4))
+        val mid = t("start", 0, loud = -11f)
+        assertEquals(DjFlow.JOURNEY, DjSequencer.resolveAuto(mid, tracks))
+        val set = DjSequencer.order(mid, tracks, DjFlow.JOURNEY).map { it.loudness!! }
+        val peak = set.indexOf(set.max())
+        assertTrue("peak at $peak in $set", peak in 2..5)
+        assertEquals(set, DjSequencer.order(mid, tracks, DjFlow.AUTO).map { it.loudness!! })
+    }
 }
