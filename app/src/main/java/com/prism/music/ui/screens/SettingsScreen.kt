@@ -1551,6 +1551,9 @@ private fun SoundPage() {
                     "Match tempo and beats (DJ-style)", "Beats line up while songs overlap", s.mixBeatMatch,
                     info = "The next song plays at the ending one's tempo with its beats lined up while they overlap, then eases back. Off, they crossfade at their own speed.",
                 ) { prefs.setMixBeatMatch(it) }
+                SliderSetting("Drop jump", s.dropLeadSeconds.toFloat(), 5f..30f, { "${it.roundToInt()} s before the drop" }, steps = 25,
+                    info = "The transition card's jump button: straight to this far before the planned blend, so you don't sit through the song.",
+                ) { prefs.setDropLeadSeconds(it.roundToInt()) }
             }
         }
         Group("Quality") {

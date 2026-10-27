@@ -237,6 +237,22 @@ class MixEngine(
     }
 
     /**
+     * The card's jump: straight to [leadMs] before the planned drop, so the blend can be heard
+     * without sitting through the song. Only from idle (a blend getting ready has Blend now).
+     */
+    fun jumpToDrop(leadMs: Long) {
+        val item = main.currentMediaItem ?: return
+        if (phase != Phase.IDLE || plan != null) return
+        val dur = main.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
+        val length = if (auto()) AUTO_MAX_MS else mixMs() ?: return
+        val p = makePlan(item, dur, length) ?: return
+        val target = (p.startMs - leadMs).coerceIn(0L, (dur - 1_000).coerceAtLeast(0L))
+        if (target <= main.currentPosition) return
+        main.seekTo(target)
+        note("jumped to ${leadMs / 1000}s before the drop on the card")
+    }
+
+    /**
      * The card's Blend now: the planned blend jumps to right now (handing over within a couple of
      * seconds while the tail gets ready), or, with nothing prepared yet, a plan is made from here.
      */

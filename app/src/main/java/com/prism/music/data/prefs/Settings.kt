@@ -671,6 +671,8 @@ data class AppSettings(
     val mixAuto: Boolean = true,
     /** DJ-style: lines up the songs' beats and plays the incoming song at the outgoing one's tempo during the crossfade. */
     val mixBeatMatch: Boolean = false,
+    /** The card's jump button goes this far before the planned drop (seconds). */
+    val dropLeadSeconds: Int = 10,
     /** Tempo analysis (a 1–4 MB download per song) may use mobile data, not only Wi-Fi. */
     val mixTempoOnCellular: Boolean = false,
     val videoMaxHeight: Int = 1080,
@@ -1047,6 +1049,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val mixSeconds = intPreferencesKey("mix_seconds")
         val mixAuto = booleanPreferencesKey("mix_auto")
         val mixBeatMatch = booleanPreferencesKey("mix_beat_match")
+        val dropLeadSeconds = intPreferencesKey("drop_lead_seconds")
         val mixTempoOnCellular = booleanPreferencesKey("mix_tempo_cellular")
         val contentCountry = stringPreferencesKey("content_country")
         val videoMaxHeight = intPreferencesKey("video_max_height")
@@ -1421,6 +1424,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             mixSeconds = (p[K.mixSeconds] ?: d.mixSeconds).coerceIn(1, 12),
             mixAuto = p[K.mixAuto] ?: d.mixAuto,
             mixBeatMatch = p[K.mixBeatMatch] ?: d.mixBeatMatch,
+            dropLeadSeconds = (p[K.dropLeadSeconds] ?: d.dropLeadSeconds).coerceIn(5, 30),
             mixTempoOnCellular = p[K.mixTempoOnCellular] ?: d.mixTempoOnCellular,
             contentCountry = p[K.contentCountry] ?: d.contentCountry,
             skipSilence = p[K.skipSilence] ?: d.skipSilence,
@@ -1783,6 +1787,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
     fun setMixSeconds(v: Int) = edit { it[K.mixSeconds] = v.coerceIn(1, 12) }
     fun setMixAuto(v: Boolean) = edit { it[K.mixAuto] = v }
     fun setMixBeatMatch(v: Boolean) = edit { it[K.mixBeatMatch] = v }
+    fun setDropLeadSeconds(v: Int) = edit { it[K.dropLeadSeconds] = v.coerceIn(5, 30) }
     fun setMixTempoOnCellular(v: Boolean) = edit { it[K.mixTempoOnCellular] = v }
     fun setContentCountry(v: String) = edit { it[K.contentCountry] = v }
     fun setSkipSilence(v: Boolean) = edit { it[K.skipSilence] = v }

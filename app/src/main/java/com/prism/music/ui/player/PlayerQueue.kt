@@ -234,6 +234,7 @@ private fun LazyListScope.queueSection(rows: List<QueueEntry>, reorder: Boolean 
 private fun TransitionCard() {
     val c = LocalContainer.current
     val pc = c.player
+    val settings by c.settings.flow.collectAsState()
     val transition by c.mixPreview.preview.collectAsState()
     val noBlendReason by c.mixPreview.noBlendReason.collectAsState()
     var pos by remember { mutableLongStateOf(0L) }
@@ -272,9 +273,11 @@ private fun TransitionCard() {
         if (t != null) {
             Spacer(Modifier.height(8.dp))
             Row {
-                QueueChip("Skip blend") { c.mixControls?.skipBlend() }
+                QueueChip("Skip") { c.mixControls?.skipBlend() }
                 Spacer(Modifier.width(8.dp))
                 QueueChip("Blend now") { c.mixControls?.blendNow() }
+                Spacer(Modifier.width(8.dp))
+                QueueChip("${settings.dropLeadSeconds}s to drop") { c.mixControls?.jumpToDrop(settings.dropLeadSeconds * 1000L) }
             }
         }
     }
