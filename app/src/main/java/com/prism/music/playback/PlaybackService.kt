@@ -321,7 +321,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             buildTail = ::buildTailPlayer,
             onSettled = ::restoreMusicSpeed,
             transitions = c.mixPreview,
-        ).also { it.start() }
+        ).also { it.start(); c.mixControls = it }
         // Prism Connect: the speaker or TV being cast to plays what this player plays, and its volume is the session's.
         sessionPlayer.remote = object : LyricsOverlayPlayer.Remote {
             override val volume: Int? get() = if (c.cast.casting) c.cast.volume else null

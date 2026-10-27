@@ -269,6 +269,14 @@ private fun TransitionCard() {
                 color = Color.White.copy(alpha = 0.6f), maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         }
+        if (t != null) {
+            Spacer(Modifier.height(8.dp))
+            Row {
+                QueueChip("Skip blend") { c.mixControls?.skipBlend() }
+                Spacer(Modifier.width(8.dp))
+                QueueChip("Blend now") { c.mixControls?.blendNow() }
+            }
+        }
     }
 }
 

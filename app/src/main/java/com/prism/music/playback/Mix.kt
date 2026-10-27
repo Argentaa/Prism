@@ -202,6 +202,11 @@ class MixEngine(
             return 1000
         }
         if (main.currentPosition < p.startMs - LEAD_MS - PREPARE_MS - 3000) return 250
+        return preparePlan(p, item)
+    }
+
+    /** Gets the tail ready to play the ending song along (muted): shared by the plan and Blend now. */
+    private fun preparePlan(p: Plan, item: MediaItem): Long {
         val shift = ShiftProcessor()
         val t = buildTail(shift)
         shifter = shift
@@ -217,6 +222,41 @@ class MixEngine(
         note("planned ${p.fromId} -> ${p.toId}: blend at ${p.startMs} ms for ${p.lengthMs} ms, next from ${p.inMs} ms" +
             if (p.beats) ", tempo ×%.3f, on the beat".format(p.ratio) else "")
         return 50
+    }
+
+    /**
+     * The card's Skip: whatever is coming is cancelled and this song plays through on its own.
+     * The song is marked (like a missed plan) so it isn't re-planned straight away.
+     */
+    fun skipBlend() {
+        val item = main.currentMediaItem ?: return
+        abort("skipped on the card")
+        noPlanFor = item.mediaId
+        transitions?.noBlend("blend skipped — playing through")
+        note("blend skipped on the card")
+    }
+
+    /**
+     * The card's Blend now: the planned blend jumps to right now (handing over within a couple of
+     * seconds while the tail gets ready), or, with nothing prepared yet, a plan is made from here.
+     */
+    fun blendNow() {
+        val item = main.currentMediaItem ?: return
+        if (phase == Phase.BLENDING || phase == Phase.SETTLING) return
+        val p = plan
+        if (p != null && item.mediaId == p.fromId && (phase == Phase.PREPARED || phase == Phase.SYNCING)) {
+            // Jump the handover close to now, leaving one measuring round so it stays in step.
+            p.startMs = main.currentPosition + BLEND_NOW_LEAD_MS
+            note("blend ${p.fromId} -> ${p.toId} jumped to now on the card")
+            return
+        }
+        if (phase != Phase.IDLE || plan != null) return
+        val dur = main.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
+        val length = if (auto()) AUTO_MAX_MS else mixMs() ?: return
+        val fresh = makePlan(item, dur, length) ?: return
+        // No time for the usual lead-in: the tail gets ready while the handover waits the minimum.
+        fresh.startMs = (main.currentPosition + BLEND_NOW_LEAD_MS).coerceAtMost(fresh.startMs)
+        preparePlan(fresh, item)
     }
 
     /**
@@ -659,6 +699,8 @@ class MixEngine(
         private const val IN_STEP_MS = 8L
         /** Time given to the tail to load the ending (it's in the song cache, so usually far less; mobile data can take longer). */
         private const val PREPARE_MS = 6000L
+        /** Blend now starts the handover this far out: enough to get the tail ready and measure it once. */
+        private const val BLEND_NOW_LEAD_MS = 4000L
         /** The least time before the blend a late tail may still start in: enough to measure and settle once. */
         private const val MIN_SYNC_MS = 2500L
         /** The ending song quiet this long mid-blend means its music is over. */
