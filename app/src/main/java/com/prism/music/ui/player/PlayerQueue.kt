@@ -251,8 +251,9 @@ private fun TransitionCard() {
         val t = transition
         if (t != null) {
             val left = (t.startMs - pos) / 1000
+            val when_ = if (left < 60) "${left}s" else "${left / 60}:${(left % 60).toString().padStart(2, '0')}"
             Text(
-                if (left > 0) "Next blend · mix in ${left}s" else "Blending now",
+                if (left > 0) "Next blend · mix in $when_" else "Blending now",
                 style = MaterialTheme.typography.titleMedium, color = Color.White,
             )
             Spacer(Modifier.height(2.dp))

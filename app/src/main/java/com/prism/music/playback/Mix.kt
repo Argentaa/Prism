@@ -184,13 +184,20 @@ class MixEngine(
             scanFromPhone(item.mediaId)
         }
         val planAhead = length + LEAD_MS + PREPARE_MS + 5_000
-        if (left > planAhead) return minOf(2000, left - planAhead).coerceAtLeast(250)
+        if (left > planAhead) {
+            // The card from the song's start: a provisional plan, recomputed as the song plays, so the
+            // Queue shows what's coming instead of nothing. Misses this early are transient (the queue can
+            // grow, a scan can land), so nothing is remembered here — unlike the final plan below.
+            if (noPlanFor != item.mediaId) makePlan(item, dur, length)?.let { transitions?.publish(it.toPreview()) }
+            return minOf(2000, left - planAhead).coerceAtLeast(250)
+        }
         if (noPlanFor == item.mediaId) return 1000
         val p = makePlan(item, dur, length) ?: run { noPlanFor = item.mediaId; return 1000 }
         // (The tail can still load while it waits to play along, see [prepared], so only the lead-in itself is needed.)
         if (main.currentPosition > p.startMs - LEAD_MS - 1000) {
-            // Too late to get the tail ready in time (a seek near the end): let this one end on its own.
-            note("no blend after ${item.mediaId}: too close to the end to get ready (at ${main.currentPosition} ms, blend at ${p.startMs} ms)")
+            // Too late to get the tail ready in time (a seek near the end): let this one end on its own,
+            // and say so on the card instead of just going quiet.
+            noBlend(item, "too close to the end — skipped ahead")
             noPlanFor = item.mediaId
             return 1000
         }
@@ -229,10 +236,14 @@ class MixEngine(
     }
 
     private fun makePlan(item: MediaItem, dur: Long, length: Long): Plan? {
-        val toIndex = main.nextMediaItemIndex.takeIf { it != C.INDEX_UNSET } ?: return noBlend(item, "nothing next in the queue")
-        if (main.repeatMode == Player.REPEAT_MODE_ONE) return noBlend(item, "repeat one")
-        val next = main.getMediaItemAt(toIndex)
-        if (next.mediaId.isBlank() || next.mediaId == item.mediaId) return noBlend(item, "the same song next")
+        var toIndex = main.nextMediaItemIndex.takeIf { it != C.INDEX_UNSET }
+        if (toIndex == null && main.repeatMode == Player.REPEAT_MODE_ONE) {
+            // Repeating one song: it runs into itself, for a seamless loop.
+            toIndex = main.currentMediaItemIndex.takeIf { it != C.INDEX_UNSET }
+        }
+        val toIdx = toIndex ?: return noBlend(item, "nothing next in the queue")
+        val next = main.getMediaItemAt(toIdx)
+        if (next.mediaId.isBlank()) return noBlend(item, "nothing next in the queue")
         if (!allowed(item, next)) return noBlend(item, "not blended here (an album playing through, a video, live, a podcast, Sing, Listen Together or casting)")
         val a = tempo.cached(item.mediaId)
         val b = tempo.cached(next.mediaId)
@@ -246,6 +257,7 @@ class MixEngine(
                 else -> chosen
             }
         }
+        if (next.mediaId == item.mediaId) reason = "seamless replay"
         val len = minOf(chosen, dur / 3, nextDur / 3)
         if (len < 1000 || dur < 30_000) return noBlend(item, "a song too short to blend (${dur / 1000} s, next ${nextDur.takeIf { it != Long.MAX_VALUE }?.let { it / 1000 } ?: "?"} s)")
         val end = (a?.lastSoundMs?.takeIf { it in dur / 2..dur } ?: dur)
@@ -281,13 +293,13 @@ class MixEngine(
         val t = tail ?: return abort("no tail")
         if (main.currentMediaItem?.mediaId != p.fromId) return abort("song changed")
         val pos = main.currentPosition
-        if (pos > p.startMs + 200 || pos < p.startMs - LEAD_MS - PREPARE_MS - 15_000) return abort("seeked away")
+        if (pos > p.startMs + 200 || pos < p.startMs - LEAD_MS - PREPARE_MS - 15_000) return abort("seeked away", "skipped — no blend this time")
         if (pos < p.startMs - LEAD_MS) return if (p.startMs - LEAD_MS - pos > 400) 100 else 10
         if (t.playbackState != Player.STATE_READY) {
             // Still loading the ending (slow network): it can wait as long as there's time left to get in step.
             if (pos < p.startMs - MIN_SYNC_MS) return 50
             // Not ready in time: no blend, the song ends on its own.
-            return abort("tail not ready (the song's ending didn't load in time)")
+            return abort("tail not ready (the song's ending didn't load in time)", "the ending didn't load in time")
         }
         // Where the main player is now, if it's well past where the tail waits (a reload costs a moment; [syncing]
         // shifts away whatever difference is left). Still muted.
@@ -317,7 +329,7 @@ class MixEngine(
         if (main.currentMediaItem?.mediaId != p.fromId) return abort("song changed")
         t.playWhenReady = main.playWhenReady
         val pos = main.currentPosition
-        if (pos > p.startMs + 500 || pos < p.startMs - LEAD_MS - 2000) return abort("seeked away")
+        if (pos > p.startMs + 500 || pos < p.startMs - LEAD_MS - 2000) return abort("seeked away", "skipped — no blend this time")
         val now = SystemClock.elapsedRealtime()
         val drift = tailPosition(t) - pos
         // A player's reported position isn't worked out afresh on every read: it's the position as of its last update,
@@ -381,7 +393,7 @@ class MixEngine(
                         LONG_HANDOVER_MS
                     } else {
                         note("tail out of step by ${d ?: "an unknown amount"} ms at the blend")
-                        return abort("out of step")
+                        return abort("out of step", "couldn't line up in time")
                     }
                 }
                 abs(d) > 45 -> LONG_HANDOVER_MS
@@ -539,10 +551,13 @@ class MixEngine(
         else -> "idle"
     }
 
-    private fun abort(why: String): Long {
+    private fun abort(why: String, say: String? = null): Long {
         val wasOn = phase != Phase.IDLE
         if (wasOn) note("blend stopped: $why")
-        transitions?.clear()
+        // Say why on the card when the song is still this one (a new song publishes its own state right
+        // away); a song change just clears, so no stale reason flashes.
+        val sameSong = plan?.let { main.currentMediaItem?.mediaId == it.fromId } ?: false
+        if (say != null && sameSong) transitions?.noBlend(say) else transitions?.clear()
         tail?.let { runCatching { it.release() } }
         tail = null
         shifter = null
