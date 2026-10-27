@@ -173,7 +173,8 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
                 item(key = "h-now") { Heading("Now Playing", Modifier.padding(top = 12.dp, bottom = 6.dp)) }
                 item(key = "now-" + now.uid) { QueueRow(now.song, isCurrent = true, onClick = {}, onRemove = null, badge = badge(now.song)) }
             }
-            if (settings.mix && (transition != null || noBlendReason != null)) {
+            // PR1 card: DJ mode blends regardless of the crossfade switch, so the card follows DJ too.
+            if ((settings.mix || dj) && (transition != null || noBlendReason != null)) {
                 item(key = "transition") { TransitionCard() }
             }
             if (queued.isNotEmpty()) {
