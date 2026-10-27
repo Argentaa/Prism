@@ -1,6 +1,8 @@
 package com.prism.music.ui.player
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import com.prism.music.ui.theme.PrismIcons
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -238,6 +240,7 @@ private fun TransitionCard() {
     val transition by c.mixPreview.preview.collectAsState()
     val noBlendReason by c.mixPreview.noBlendReason.collectAsState()
     val lenOverride by c.mixPreview.lengthOverrideMs.collectAsState()
+    val mixStyle by c.mixPreview.style.collectAsState()
     var pos by remember { mutableLongStateOf(0L) }
     LaunchedEffect(transition?.fromId, transition?.toId) {
         if (transition == null) return@LaunchedEffect
@@ -273,7 +276,13 @@ private fun TransitionCard() {
         }
         if (t != null) {
             Spacer(Modifier.height(8.dp))
-            Row {
+            Row(Modifier.horizontalScroll(rememberScrollState())) {
+                QueueChip(mixStyle.label) {
+                    val all = com.prism.music.playback.MixStyle.entries
+                    c.mixPreview.setStyle(all[(all.indexOf(mixStyle) + 1) % all.size])
+                    c.mixControls?.replan()
+                }
+                Spacer(Modifier.width(8.dp))
                 QueueChip("Len: " + (lenOverride?.let { "${it / 1000}s" } ?: "Auto")) {
                     c.mixPreview.setLengthOverride(
                         when (lenOverride) {

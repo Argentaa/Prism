@@ -30,6 +30,17 @@ data class TransitionPreview(
  *
  * Queue-scoped in spirit like DJ mode's state: a new song (or a new plan) replaces whatever was here.
  */
+/**
+ * How an automatic blend sounds: the plain volume crossfade, a short club cut,
+ * a filter sweep, or a bass swap. Picked on the card, per queue.
+ */
+enum class MixStyle(val label: String) {
+    SMOOTH("Smooth"),
+    CLUB_CUT("Club cut"),
+    FILTER("Filter"),
+    BASS_SWAP("Bass swap"),
+}
+
 class MixPreview {
     private val _preview = MutableStateFlow<TransitionPreview?>(null)
     val preview: StateFlow<TransitionPreview?> = _preview
@@ -66,4 +77,14 @@ class MixPreview {
         _lengthOverrideMs.value = null
         return v
     }
+
+    /** The queue's blend style for the next planned transition. Set from the card. */
+    private val _style = MutableStateFlow(MixStyle.SMOOTH)
+    val style: StateFlow<MixStyle> = _style
+
+    fun setStyle(s: MixStyle) {
+        _style.value = s
+    }
+
+    internal fun styleNow(): MixStyle = _style.value
 }

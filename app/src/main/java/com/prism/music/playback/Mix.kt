@@ -58,11 +58,13 @@ class MixEngine(
     /** Scans a song from what's on the phone (no network), if it hasn't been ([MixTempo.measure]). */
     private val scanFromPhone: (String) -> Unit,
     /** A second player for the ending song: same sources and effects as the main one (plus [ShiftProcessor] first), no audio focus. */
-    private val buildTail: (ShiftProcessor) -> ExoPlayer,
+    private val buildTail: (ShiftProcessor, TransitionFilterAudioProcessor) -> ExoPlayer,
     /** A blend is over (done or stopped) and the main player is back to normal: the listener's own speed can return. */
     private val onSettled: () -> Unit = {},
     /** Publishes the planned transition and no-blend reasons for the Queue's transition card (null in unit tests). */
     private val transitions: MixPreview? = null,
+    /** The main player's transition filter, driven during FILTER/BASS_SWAP blends (null in unit tests). */
+    private val mainFilter: TransitionFilterAudioProcessor? = null,
 ) {
     private class Plan(
         val fromId: String,
@@ -80,9 +82,13 @@ class MixEngine(
         val beatMs: Double = 0.0,
         /** Short human reason for the Queue's transition card, e.g. "harmonic keys · beats locked". */
         val reason: String,
+        /** How this blend sounds (captured from the card's pick when planned). */
+        val style: MixStyle,
     ) {
         /** How many times the blend has been put off to get the tail in step. */
         var postponed = 0
+        /** A club cut never waits: it goes ahead even slightly out of step. */
+        var allowPostpone = true
 
         fun toPreview() = TransitionPreview(fromId, toId, startMs, lengthMs, inMs, ratio, beats, reason)
     }
@@ -93,6 +99,8 @@ class MixEngine(
     private var plan: Plan? = null
     private var tail: ExoPlayer? = null
     private var shifter: ShiftProcessor? = null
+    /** The tail's transition filter this blend (its twin on the main player is the service's). */
+    private var tailFilter: TransitionFilterAudioProcessor? = null
     private var blendStartedAt = 0L
     private var settleFrom = 1f
     private var settleStartedAt = 0L
@@ -208,8 +216,10 @@ class MixEngine(
     /** Gets the tail ready to play the ending song along (muted): shared by the plan and Blend now. */
     private fun preparePlan(p: Plan, item: MediaItem): Long {
         val shift = ShiftProcessor()
-        val t = buildTail(shift)
+        val tfilter = TransitionFilterAudioProcessor()
+        val t = buildTail(shift, tfilter)
         shifter = shift
+        tailFilter = tfilter
         t.volume = 0f
         t.setMediaItem(item.buildUpon().build())
         t.seekTo(p.startMs - LEAD_MS)
@@ -330,6 +340,16 @@ class MixEngine(
             chosen = picked
             reason = "picked ${picked / 1000}s"
         }
+        val style = transitions?.styleNow() ?: MixStyle.SMOOTH
+        var allowPostpone = true
+        if (style == MixStyle.CLUB_CUT) {
+            // A club cut: short by definition, and it never waits for perfect step.
+            chosen = minOf(chosen, CLUB_CUT_MAX_MS)
+            reason = "club cut"
+            allowPostpone = false
+        } else if (style != MixStyle.SMOOTH) {
+            reason += " · ${style.label.lowercase()}"
+        }
         val len = minOf(chosen, dur / 3, nextDur / 3)
         if (len < 1000 || dur < 30_000) return noBlend(item, "a song too short to blend (${dur / 1000} s, next ${nextDur.takeIf { it != Long.MAX_VALUE }?.let { it / 1000 } ?: "?"} s)")
         val end = (a?.lastSoundMs?.takeIf { it in dur / 2..dur } ?: dur)
@@ -358,7 +378,9 @@ class MixEngine(
             }
         }
         if (start < dur / 2) return noBlend(item, "the blend would start before the song's middle")
-        return Plan(item.mediaId, next.mediaId, toIndex, start, inMs, len, ratio, beats, beatMs, reason)
+        return Plan(item.mediaId, next.mediaId, toIndex, start, inMs, len, ratio, beats, beatMs, reason, style).also {
+            it.allowPostpone = allowPostpone
+        }
     }
 
     /** The tail is getting ready; it starts playing along (muted) just before the blend. */
@@ -444,7 +466,7 @@ class MixEngine(
                     // Usually the tail stopped for a moment to load (a slow connection) and fell behind after it was put in
                     // step. Rather than no crossfade at all, the blend is put off a little (it ends where it would have),
                     // the tail shifted, and measured again.
-                    val by = postponeMs(p.lengthMs, p.postponed, if (p.beats) p.beatMs / p.ratio else 0.0)
+                    val by = if (p.allowPostpone) postponeMs(p.lengthMs, p.postponed, if (p.beats) p.beatMs / p.ratio else 0.0) else 0
                     if (by > 0 && t.isPlaying) {
                         d?.let { shifter?.shift(-it) }
                         offset = null
@@ -537,6 +559,7 @@ class MixEngine(
         }
         main.volume = sin(progress * PI / 2).toFloat()
         t.volume = cos(progress * PI / 2).toFloat()
+        driveFilters(p, progress)
         if (p.beats && t.isPlaying) alignBeats(p, t, progress)
         if (progress >= 1f || ended) {
             t.release()
@@ -551,6 +574,37 @@ class MixEngine(
             } else finish()
         }
         return 30
+    }
+
+    /**
+     * Drives the transition filters from the blend's progress (main carries what's
+     * coming in, the tail what's going out). Volume does the crossfade; filters
+     * only color it, and sit bypassed for other styles.
+     */
+    private fun driveFilters(p: Plan, progress: Float) {
+        val main = mainFilter
+        val tail = tailFilter
+        when (p.style) {
+            MixStyle.FILTER -> {
+                tail?.setSweep(TransitionFilterAudioProcessor.Job.Kind.LOWPASS_OUT, progress)
+                main?.setSweep(TransitionFilterAudioProcessor.Job.Kind.HIGHPASS_IN, progress)
+            }
+            MixStyle.BASS_SWAP -> {
+                tail?.setSweep(TransitionFilterAudioProcessor.Job.Kind.NONE, 0f)
+                main?.setSweep(TransitionFilterAudioProcessor.Job.Kind.LOWSHELF_IN, progress)
+            }
+            else -> {
+                tail?.setSweep(TransitionFilterAudioProcessor.Job.Kind.NONE, 0f)
+                main?.setSweep(TransitionFilterAudioProcessor.Job.Kind.NONE, 0f)
+            }
+        }
+    }
+
+    /** Filters back to untouched (a plan captured its style; later picks must not leak in). */
+    private fun resetFilters() {
+        mainFilter?.reset()
+        tailFilter?.reset()
+        tailFilter = null
     }
 
     /**
@@ -613,6 +667,7 @@ class MixEngine(
         phase = Phase.IDLE
         plan = null
         noPlanFor = null
+        resetFilters()
         transitions?.clear()
         onSettled()
     }
@@ -635,6 +690,7 @@ class MixEngine(
         tail?.let { runCatching { it.release() } }
         tail = null
         shifter = null
+        resetFilters()
         if (main.volume != 1f) main.volume = 1f
         if (main.playbackParameters.speed != 1f) main.playbackParameters = PlaybackParameters.DEFAULT
         if (phase == Phase.PREPARED || phase == Phase.SYNCING) plan?.let { noPlanFor = it.fromId }
@@ -702,6 +758,8 @@ class MixEngine(
         private const val HARMONIC_LONG_MS = 10_000L
         /** DJ mode: songs in clashing keys blend no longer than this. */
         private const val HARMONIC_SHORT_MS = 3_000L
+        /** A club cut's longest: a quick handover, never a long wash. */
+        private const val CLUB_CUT_MAX_MS = 3_000L
         /** Auto's shortest: two hard edges barely overlap. */
         private const val AUTO_SHORT_MS = 1_500L
         /** The most of an abrupt ending that's faded over a quiet intro (more would cut off the song's last bars). */
