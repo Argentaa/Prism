@@ -51,4 +51,19 @@ class MixPreview {
         _preview.value = null
         _noBlendReason.value = null
     }
+
+    /** One-shot picked length for the next planned transition (null = automatic). Set from the card. */
+    private val _lengthOverrideMs = MutableStateFlow<Long?>(null)
+    val lengthOverrideMs: StateFlow<Long?> = _lengthOverrideMs
+
+    fun setLengthOverride(ms: Long?) {
+        _lengthOverrideMs.value = ms
+    }
+
+    /** Takes the picked length, if any (one-shot: cleared on take). */
+    internal fun consumeLengthOverride(): Long? {
+        val v = _lengthOverrideMs.value
+        _lengthOverrideMs.value = null
+        return v
+    }
 }

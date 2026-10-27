@@ -237,6 +237,7 @@ private fun TransitionCard() {
     val settings by c.settings.flow.collectAsState()
     val transition by c.mixPreview.preview.collectAsState()
     val noBlendReason by c.mixPreview.noBlendReason.collectAsState()
+    val lenOverride by c.mixPreview.lengthOverrideMs.collectAsState()
     var pos by remember { mutableLongStateOf(0L) }
     LaunchedEffect(transition?.fromId, transition?.toId) {
         if (transition == null) return@LaunchedEffect
@@ -273,6 +274,18 @@ private fun TransitionCard() {
         if (t != null) {
             Spacer(Modifier.height(8.dp))
             Row {
+                QueueChip("Len: " + (lenOverride?.let { "${it / 1000}s" } ?: "Auto")) {
+                    c.mixPreview.setLengthOverride(
+                        when (lenOverride) {
+                            null -> 3_000L
+                            3_000L -> 6_000L
+                            6_000L -> 10_000L
+                            else -> null
+                        }
+                    )
+                    c.mixControls?.replan()
+                }
+                Spacer(Modifier.width(8.dp))
                 QueueChip("Skip") { c.mixControls?.skipBlend() }
                 Spacer(Modifier.width(8.dp))
                 QueueChip("Blend now") { c.mixControls?.blendNow() }

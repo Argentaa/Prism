@@ -225,6 +225,17 @@ class MixEngine(
     }
 
     /**
+     * Drops the idle state so the next tick re-plans with the card's current picks
+     * (style, length). Only from idle: a blend getting ready keeps its plan.
+     */
+    fun replan() {
+        if (phase != Phase.IDLE) return
+        plan = null
+        noPlanFor = null
+        transitions?.clear()
+    }
+
+    /**
      * The card's Skip: whatever is coming is cancelled and this song plays through on its own.
      * The song is marked (like a missed plan) so it isn't re-planned straight away.
      */
@@ -314,6 +325,11 @@ class MixEngine(
             }
         }
         if (next.mediaId == item.mediaId) reason = "seamless replay"
+        // The card's picked length wins over automatic and harmonic (still capped below).
+        transitions?.consumeLengthOverride()?.let { picked ->
+            chosen = picked
+            reason = "picked ${picked / 1000}s"
+        }
         val len = minOf(chosen, dur / 3, nextDur / 3)
         if (len < 1000 || dur < 30_000) return noBlend(item, "a song too short to blend (${dur / 1000} s, next ${nextDur.takeIf { it != Long.MAX_VALUE }?.let { it / 1000 } ?: "?"} s)")
         val end = (a?.lastSoundMs?.takeIf { it in dur / 2..dur } ?: dur)
