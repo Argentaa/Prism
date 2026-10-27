@@ -46,8 +46,9 @@ class MixPlanTest {
         // Put off enough times already, or no room left: 0 (the blend goes ahead or not as-is).
         assertEquals(0L, MixEngine.postponeMs(12_000L, 99, 500.0))
         assertEquals(0L, MixEngine.postponeMs(2_000L, 0, 0.0))
-        // Otherwise a whole step, in whole beats of the ending song when beat-matched.
+        // Otherwise a whole step, in whole beats of the ending song when beat-matched
+        // (2 s at 120 BPM is exactly four beats; pinned by MixPostponeTest).
         assertEquals(2_000L, MixEngine.postponeMs(12_000L, 0, 0.0))
-        assertEquals(1_500L, MixEngine.postponeMs(12_000L, 0, 500.0))
+        assertEquals(2_000L, MixEngine.postponeMs(12_000L, 0, 500.0))
     }
 }

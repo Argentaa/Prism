@@ -716,10 +716,11 @@ class MixEngine(
          * not cut off); an abrupt ending runs into a quiet intro over that intro; two hard edges just touch briefly.
          */
         fun autoLengthMs(ending: Tempo?, next: Tempo?): Long {
-            val fade = ending?.fadeOutMs?.takeIf { it >= 0 } ?: return AUTO_UNKNOWN_MS
+            if (ending == null) return AUTO_UNKNOWN_MS
+            val fade = ending.fadeOutMs.takeIf { it >= 0 }
             val intro = next?.quietIntroMs?.takeIf { it >= 0 } ?: 0L
             return when {
-                fade >= AUTO_SHORT_MS -> fade
+                fade != null && fade >= AUTO_SHORT_MS -> fade
                 intro >= AUTO_SHORT_MS -> minOf(intro, AUTO_INTRO_MAX_MS)
                 else -> AUTO_SHORT_MS
             }.coerceIn(AUTO_SHORT_MS, AUTO_MAX_MS)
@@ -730,10 +731,11 @@ class MixEngine(
          * Kept beside it so the two can't drift apart unnoticed.
          */
         fun autoReason(ending: Tempo?, next: Tempo?): String {
-            val fade = ending?.fadeOutMs?.takeIf { it >= 0 } ?: return "not scanned yet"
+            if (ending == null) return "not scanned yet"
+            val fade = ending.fadeOutMs.takeIf { it >= 0 }
             val intro = next?.quietIntroMs?.takeIf { it >= 0 } ?: 0L
             return when {
-                fade >= AUTO_SHORT_MS -> "over the fade-out"
+                fade != null && fade >= AUTO_SHORT_MS -> "over the fade-out"
                 intro >= AUTO_SHORT_MS -> "over the quiet intro"
                 else -> "short touch"
             }

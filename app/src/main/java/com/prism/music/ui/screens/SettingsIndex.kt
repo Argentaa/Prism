@@ -238,6 +238,7 @@ object SettingsIndex {
         SettingEntry(S, "Crossfade", "Automatic length", needs = crossfade),
         SettingEntry(S, "Crossfade", "Length", needs = manualLength),
         SettingEntry(S, "Crossfade", "Match tempo and beats (DJ-style)", "bpm beatmatch", needs = crossfade),
+        SettingEntry(S, "Crossfade", "Drop jump", "transition card jump drop blend before", needs = crossfade),
         SettingEntry(S, "Quality", "Lossless playback", "flac hi-res"),
         SettingEntry(S, "Quality", "Allow access to lossless files", "flac permission", needs = lossless),
         SettingEntry(S, "Quality", "Scan for lossless files again", "flac", needs = lossless),
