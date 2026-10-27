@@ -272,10 +272,12 @@ class MixEngine(
             val bBpm = listOf(b.bpm, b.bpm * 2, b.bpm / 2).minBy { abs(ln(it / a.bpm)) }
             val r = a.bpm / bBpm
             if (abs(r - 1) <= MAX_STRETCH && b.firstBeatMs <= 4000) {
-                // The blend starts on one of the ending song's beats, with the next song's first beat.
+                // The blend starts on a phrase of the ending song (16 beats from its outro grid: a verse/chorus
+                // boundary), not just any beat, with the next song's first beat.
                 val beat = a.periodMs
-                val k = floor((start - a.outroBeatMs) / beat)
-                start = (a.outroBeatMs + k * beat).toLong()
+                val k = floor((start - a.outroBeatMs) / beat).toLong().coerceAtLeast(16L)
+                val phraseK = (k / PHRASE_BEATS) * PHRASE_BEATS
+                start = (a.outroBeatMs + phraseK * beat).toLong()
                 inMs = b.firstBeatMs
                 ratio = r.toFloat()
                 beats = true
@@ -663,8 +665,10 @@ class MixEngine(
         private const val QUIET_HANDOFF_MS = 400L
         /** How quickly the next song comes up the rest of the way then. */
         private const val RUSH_MS = 700L
-        /** The furthest the next song's tempo is stretched to match (±6%, a DJ's usual range); beyond that it blends without beats. */
-        private const val MAX_STRETCH = 0.06
+        /** The next song's tempo is stretched to match (a DJ's usual range is ±6%; wider catches more pairs). */
+        private const val MAX_STRETCH = 0.08
+        /** Blends start on a phrase boundary of the ending song: this many of its beats. */
+        private const val PHRASE_BEATS = 16L
         /** How long the next song takes to ease back to its own tempo after a tempo-matched blend. */
         private const val SETTLE_MS = 4000L
     }
