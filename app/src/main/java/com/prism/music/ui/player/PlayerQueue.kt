@@ -24,9 +24,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -241,6 +243,10 @@ private fun TransitionCard() {
     val noBlendReason by c.mixPreview.noBlendReason.collectAsState()
     val lenOverride by c.mixPreview.lengthOverrideMs.collectAsState()
     val mixStyle by c.mixPreview.style.collectAsState()
+    var showGrid by remember { mutableStateOf(false) }
+    var gridMs by remember(transition?.toId) {
+        mutableLongStateOf(transition?.toId?.let { c.mixTempo.gridOffsetMs(it) } ?: 0L)
+    }
     var pos by remember { mutableLongStateOf(0L) }
     LaunchedEffect(transition?.fromId, transition?.toId) {
         if (transition == null) return@LaunchedEffect
@@ -295,6 +301,8 @@ private fun TransitionCard() {
                     c.mixControls?.replan()
                 }
                 Spacer(Modifier.width(8.dp))
+                QueueChip("GRID" + if (gridMs != 0L) " ${if (gridMs > 0) "+" else ""}${gridMs}ms" else "") { showGrid = true }
+                Spacer(Modifier.width(8.dp))
                 QueueChip("Skip") { c.mixControls?.skipBlend() }
                 Spacer(Modifier.width(8.dp))
                 QueueChip("Blend now") { c.mixControls?.blendNow() }
@@ -302,6 +310,47 @@ private fun TransitionCard() {
                 QueueChip("${settings.dropLeadSeconds}s to drop") { c.mixControls?.jumpToDrop(settings.dropLeadSeconds * 1000L) }
             }
         }
+    }
+    if (showGrid && t != null) {
+        val target = t.toId
+        val periodMs = (60_000.0 / ((c.mixTempo.djBpm(target) ?: 120.0).coerceAtLeast(30.0))).roundToInt().toLong()
+        fun nudge(by: Long) {
+            val v = (gridMs + by).coerceIn(-2000L, 2000L)
+            c.mixTempo.setGridOffsetMs(target, v)
+            gridMs = v
+            c.mixControls?.replan()
+        }
+        AlertDialog(
+            onDismissRequest = { showGrid = false },
+            title = { Text("GRID nudge (next song)") },
+            text = {
+                Column {
+                    Text(
+                        "Moves the next song's beat grid when the detector put the first beat in the wrong place. " +
+                            "Current: ${if (gridMs > 0) "+" else ""}${gridMs}ms. Applies from the next plan.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row {
+                        QueueChip("-1 beat") { nudge(-periodMs) }
+                        Spacer(Modifier.width(8.dp))
+                        QueueChip("+1 beat") { nudge(periodMs) }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row {
+                        QueueChip("-5ms") { nudge(-5) }
+                        Spacer(Modifier.width(8.dp))
+                        QueueChip("+5ms") { nudge(5) }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showGrid = false }) { Text("Done") } },
+            dismissButton = {
+                TextButton(onClick = { c.mixTempo.setGridOffsetMs(target, 0); gridMs = 0; c.mixControls?.replan() }) {
+                    Text("Reset")
+                }
+            },
+        )
     }
 }
 

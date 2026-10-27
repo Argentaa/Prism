@@ -309,6 +309,8 @@ class MixTempo(
     private val loudPrefs = context.getSharedPreferences("song_loudness", Context.MODE_PRIVATE)
     /** Song id -> its key ([MusicKey.encode], or "none" when it has no clear one); DJ mode's harmonic ordering. */
     private val keyPrefs = context.getSharedPreferences("song_key", Context.MODE_PRIVATE)
+    /** Song id -> the listener's beat-grid nudge in ms (GRID on the card); the analysis stays untouched. */
+    private val gridPrefs = context.getSharedPreferences("song_grid", Context.MODE_PRIVATE)
     private val failed = ConcurrentHashMap.newKeySet<String>()
     /** One song at a time: decoding a whole song is the heaviest thing Prism does in the background. */
     private val lock = Mutex()
@@ -323,6 +325,15 @@ class MixTempo(
 
     /** Scanned for its key by the current [KeyDetector] (with or without a clear answer). */
     fun keyed(id: String) = keyPrefs.getString(id, null)?.let { it.startsWith("${MusicKey.VERSION}|") || it == "none:${MusicKey.VERSION}" } == true
+
+    /** The listener's beat-grid nudge for a song in ms (0 = none). */
+    fun gridOffsetMs(id: String): Long = gridPrefs.getLong(id, 0L)
+
+    /** Nudges a song's beat grid by [ms] (clamped); 0 clears it. */
+    fun setGridOffsetMs(id: String, ms: Long) {
+        val v = ms.coerceIn(-MixEngine.GRID_MAX_MS, MixEngine.GRID_MAX_MS)
+        gridPrefs.edit().let { e -> if (v == 0L) e.remove(id) else e.putLong(id, v); e.apply() }
+    }
 
     private fun scanned(id: String) = loudPrefs.contains(id)
 

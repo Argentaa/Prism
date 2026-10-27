@@ -363,18 +363,24 @@ class MixEngine(
             // Tempo compared octave-free: a 170 BPM song against an 85 BPM one already shares a beat.
             val bBpm = listOf(b.bpm, b.bpm * 2, b.bpm / 2).minBy { abs(ln(it / a.bpm)) }
             val r = a.bpm / bBpm
-            if (abs(r - 1) <= MAX_STRETCH && b.firstBeatMs <= 4000) {
+            // The listener's GRID nudges, if any (the analysis stays untouched).
+            val gridA = tempo.gridOffsetMs(item.mediaId)
+            val gridB = tempo.gridOffsetMs(next.mediaId)
+            val bFirst = griddedFirstBeat(b.firstBeatMs, gridB)
+            if (abs(r - 1) <= MAX_STRETCH && bFirst <= 4000) {
                 // The blend starts on a phrase of the ending song (16 beats from its outro grid: a verse/chorus
                 // boundary), not just any beat, with the next song's first beat.
                 val beat = a.periodMs
-                val k = floor((start - a.outroBeatMs) / beat).toLong().coerceAtLeast(16L)
+                val aOutro = griddedOutroBeat(a.outroBeatMs, gridA, beat)
+                val k = floor((start - aOutro) / beat).toLong().coerceAtLeast(16L)
                 val phraseK = (k / PHRASE_BEATS) * PHRASE_BEATS
-                start = (a.outroBeatMs + phraseK * beat).toLong()
-                inMs = b.firstBeatMs
+                start = (aOutro + phraseK * beat).toLong()
+                inMs = bFirst
                 ratio = r.toFloat()
                 beats = true
                 beatMs = beat * r
                 reason += " · beats locked"
+                if (gridB != 0L) reason += " · grid ${if (gridB > 0) "+" else ""}${gridB}ms"
             }
         }
         if (start < dur / 2) return noBlend(item, "the blend would start before the song's middle")
@@ -732,6 +738,21 @@ class MixEngine(
                 else -> "short touch"
             }
         }
+
+        /** A beat-grid nudge's furthest (±2 s; beyond that the analysis is wrong, not the grid). */
+        const val GRID_MAX_MS = 2000L
+
+        /**
+         * The outro grid with a nudge, wrapped into one period (a beat is a beat, not which one).
+         * Pure, so it's unit-tested.
+         */
+        fun griddedOutroBeat(rawMs: Double, offsetMs: Long, periodMs: Double): Double {
+            if (periodMs <= 0) return rawMs
+            return ((rawMs + offsetMs) % periodMs + periodMs) % periodMs
+        }
+
+        /** The first beat with a nudge (an absolute position: never before zero). Pure, unit-tested. */
+        fun griddedFirstBeat(rawMs: Long, offsetMs: Long): Long = (rawMs + offsetMs).coerceAtLeast(0L)
 
         /**
          * How far to put a blend off when the tail isn't in step as it comes up ([POSTPONE_MS], in whole beats of the
