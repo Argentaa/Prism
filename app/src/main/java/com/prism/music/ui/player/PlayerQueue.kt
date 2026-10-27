@@ -141,6 +141,66 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
                 Spacer(Modifier.width(8.dp))
                 QueueChip("Clear") { pc.clearUpcoming() }
             }
+            // Set recording (API 29+): captures Prism's own playback to Music/Prism sets.
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                Spacer(Modifier.width(8.dp))
+                val recording by c.setRecorder.recording.collectAsState()
+                val startedAt by c.setRecorder.startedAtMs.collectAsState()
+                var recTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
+                if (recording) {
+                    LaunchedEffect(Unit) {
+                        while (true) {
+                            recTick = System.currentTimeMillis()
+                            delay(1000)
+                        }
+                    }
+                }
+                var recGranted by remember {
+                    mutableStateOf(
+                        androidx.core.content.ContextCompat.checkSelfPermission(
+                            context, android.Manifest.permission.RECORD_AUDIO,
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    )
+                }
+                fun startSetRecording() {
+                    c.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        val ok = c.setRecorder.start()
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            android.widget.Toast.makeText(
+                                context,
+                                if (ok) "Recording — for personal use" else "Couldn't start recording",
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }
+                }
+                val recAsk = androidx.activity.compose.rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+                ) { ok ->
+                    recGranted = ok
+                    if (ok) startSetRecording()
+                    else android.widget.Toast.makeText(
+                        context,
+                        "Permission needed to capture Prism's own audio (never the mic)",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+                val recLabel = if (recording) {
+                    val s = ((recTick - startedAt) / 1000).coerceAtLeast(0L)
+                    "■ ${s / 60}:${(s % 60).toString().padStart(2, '0')}"
+                } else "● Rec"
+                QueueChip(recLabel, selected = recording) {
+                    if (recording) {
+                        val uri = c.setRecorder.stop()
+                        android.widget.Toast.makeText(
+                            context,
+                            if (uri != null) "Saved to Music/Prism sets" else "Couldn't save the recording",
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                    } else if (recGranted) startSetRecording()
+                    else recAsk.launch(android.Manifest.permission.RECORD_AUDIO)
+                }
+            }
         }
         if (dj) {
             Spacer(Modifier.height(10.dp))

@@ -407,6 +407,8 @@ class AppContainer(val app: Application) {
     val dj = com.prism.music.playback.DjMode()
     /** The automatic transition's public state for the Queue's transition card (see the blend). */
     val mixPreview = com.prism.music.playback.MixPreview()
+    /** Records the set to Music/Prism sets (API 29+; refuses politely below). */
+    val setRecorder by lazy { com.prism.music.playback.SetRecorder(app) }
     /** The engine behind the card's Skip / Blend now (set when playback starts; null before that). */
     @Volatile var mixControls: com.prism.music.playback.MixEngine? = null
     val exclusions by lazy { com.prism.music.data.foryou.Exclusions(app) }

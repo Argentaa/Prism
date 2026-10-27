@@ -451,6 +451,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             com.prism.music.widget.Widgets.update(this, song, false, song.id in c.library.likedIds.value, player.currentPosition, player.duration.takeIf { it > 0 })
         }
         mix.release()
+        c.setRecorder.release()
         c.cast.detach(player)
         c.player.detach()
         carLyrics.stop()
